@@ -1,16 +1,12 @@
-use std::time::{Instant, Duration};
 use std::ffi::OsStr;
-use std::path::Path;
-use std::fs::File;
 use std::io::{Write, Read};
 
-use freetype::{Library, LcdFilter, face::LoadFlag, bitmap::PixelMode};
-use image::{ImageBuffer, Luma, Rgb, ImageFormat};
+use freetype::{Library, LcdFilter};
 
-use font::{FontAtlas, Rectangle, generate_text, Glyph};
+use font::{FontAtlas, Glyph};
 
 const FONT_DIRECTORY: &str = "/home/corendos/dev/rust/font/resources/fonts";
-const FONT_SIZE: isize = 120 * 64;
+const FONT_SIZE: isize = 30 * 64;
 const GLYPHS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\\|/?.>,<`!@#$%^&*()_-=+[]{};:'\" é";
 
 fn get_fonts() -> Vec<String> {
@@ -53,13 +49,16 @@ fn main() {
 
     library.set_lcd_filter(LcdFilter::LcdFilterDefault).unwrap();
 
-    let font_face = library.new_face(&fonts[0], 0).expect("Failed to load font");
+    let font_face = library.new_face(&fonts[7], 0).expect("Failed to load font");
 
-    font_face.set_char_size(0, FONT_SIZE, 0, 141).unwrap();
+    font_face.set_char_size(0, FONT_SIZE, 0, 72).unwrap();
 
-    let font_atlas = FontAtlas::from_str(GLYPHS, &font_face, Some((2048, 2048))).unwrap();
+    let font_atlas = FontAtlas::from_str(GLYPHS, &font_face, (256, 256)).unwrap();
 
-    font_atlas.buffer.save("glyphs.png").unwrap();
+    for (i, buffer) in font_atlas.buffers.iter().enumerate() {
+	buffer.save(format!("glyphs_{}.png", i)).unwrap();
+    }
+
 /*
     let c = font_atlas.map.get(&'a').unwrap();
      */

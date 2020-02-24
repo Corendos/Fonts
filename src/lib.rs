@@ -163,6 +163,7 @@ impl From<&GlyphSlot> for GlyphMetrics {
 pub struct Glyph {
     pub metrics: GlyphMetrics,
     pub atlas_position: Rectangle,
+    pub atlas_index: usize
 }
 
 #[derive(Debug)]
@@ -177,19 +178,18 @@ pub struct GlyphMetrics {
 
 pub struct FontAtlas {
     pub map: HashMap<char, Glyph>,
-    pub buffer: ImageBuffer<Rgb<u8>, Vec<u8>>
+    pub buffers: Vec<ImageBuffer<Rgb<u8>, Vec<u8>>>,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl FontAtlas {
-    pub fn new() -> Self {
-	Self::new_with_size_hint(Some((256, 256)))
-    }
-
-    pub fn new_with_size_hint(size_hint: Option<(u32, u32)>) -> Self {
-	let (width, height) = size_hint.unwrap_or((256, 256));
+    pub fn new(atlas_size: (u32, u32)) -> Self {
 	Self {
 	    map: HashMap::new(),
-	    buffer: ImageBuffer::new(width, height)
+	    buffers: vec![ImageBuffer::new(atlas_size.0, atlas_size.1)],
+	    width: atlas_size.0,
+	    height: atlas_size.1,
 	}
     }
 
@@ -212,10 +212,12 @@ impl FontAtlas {
 	vec_buffer
     }
 
-    pub fn from_str(glyphs: &str, font_face: &Face, size_hint: Option<(u32, u32)>) -> Result<FontAtlas, FontAtlasError> {
-	let mut atlas = FontAtlas::new_with_size_hint(size_hint);
+    pub fn from_str(glyphs: &str, font_face: &Face, atlas_size: (u32, u32)) -> Result<FontAtlas, FontAtlasError> {
+	let mut atlas = FontAtlas::new(atlas_size);
 
-	let mut node = Node::new(Rectangle::new(0, 0, atlas.buffer.width(), atlas.buffer.height()));
+	let mut node = Node::new(Rectangle::new(0, 0, atlas.width, atlas.height));
+
+	let mut current_atlas_index = 0usize;
 
 	for c in glyphs.chars() {
 	    if let Err(_) = font_face.load_char(c as usize, LoadFlag::RENDER | LoadFlag::TARGET_LCD) {
@@ -240,31 +242,39 @@ impl FontAtlas {
 
 	    let bitmap_rectangle = Rectangle::new(0, 0, bitmap.width() + padding_h, bitmap.height() + padding_v);
 
-	    match node.insert(&bitmap_rectangle) {
-		Ok(inserted) => {
-		    let inserted_without_padding = Rectangle::new(
-			inserted.top + padding_top,
-			inserted.left + padding_left,
-			inserted.width - padding_h,
-			inserted.height - padding_v
-		    );
-		    let g = Glyph {
-			atlas_position: inserted_without_padding,
-			metrics: glyph.into()
-		    };
-		    atlas.map.insert(c, g);
+	    let inserted = node.insert(&bitmap_rectangle).or_else(|_| {
+		let new_buffer = ImageBuffer::new(atlas.width, atlas.height);
+		atlas.buffers.push(new_buffer);
+		current_atlas_index += 1;
 
-		    let mut atlas_view = atlas.buffer.sub_image(
-			inserted_without_padding.left,
-			inserted_without_padding.top,
-			inserted_without_padding.width,
-			inserted_without_padding.height
-		    );
-		    atlas_view.copy_from(&bitmap, 0, 0);
-		},
-		Err(_) => {
+		node = Node::new(Rectangle::new(0, 0, atlas.width, atlas.height));
+		return node.insert(&bitmap_rectangle).or_else(|_| {
 		    return Err(FontAtlasError::InsertError(bitmap_rectangle))
-		}
+		});
+	    })?;
+
+	    {
+		let inserted_without_padding = Rectangle::new(
+		    inserted.top + padding_top,
+		    inserted.left + padding_left,
+		    inserted.width - padding_h,
+		    inserted.height - padding_v
+		);
+
+		let g = Glyph {
+		    atlas_position: inserted_without_padding,
+		    atlas_index: current_atlas_index,
+		    metrics: glyph.into()
+		};
+		atlas.map.insert(c, g);
+
+		let mut atlas_view = atlas.buffers[current_atlas_index].sub_image(
+		    inserted_without_padding.left,
+		    inserted_without_padding.top,
+		    inserted_without_padding.width,
+		    inserted_without_padding.height
+		);
+		atlas_view.copy_from(&bitmap, 0, 0);
 	    }
 	}
 
@@ -331,7 +341,7 @@ pub fn generate_text(s: &str, font_atlas: &FontAtlas, save_path: &Path) {
 		let dest_x = x as i32 + left + advance + glyph.metrics.bearing_x;
 		let dest_y = y as i32 + top - glyph.metrics.bearing_y;
 
-		buffer.put_pixel(dest_x as u32, dest_y as u32, *font_atlas.buffer.get_pixel(source_x, source_y));
+		buffer.put_pixel(dest_x as u32, dest_y as u32, *font_atlas.buffers[glyph.atlas_index].get_pixel(source_x, source_y));
 	    }
 	}
 
