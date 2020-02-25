@@ -58,7 +58,10 @@ fn main() {
 
     let text = "test the text generator";
 
-    generate_text(&text, &font_atlas, Path::new(&"text.png"));
+    for (i, buffer) in font_atlas.buffers.iter().enumerate() {
+	buffer.save(format!("glyphs_{}.png", i)).unwrap();
+    }
+    //generate_text(&text, &font_atlas, Path::new(&"text.png"));
 /*
     let c = font_atlas.map.get(&'a').unwrap();
      */
