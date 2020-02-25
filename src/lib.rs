@@ -7,7 +7,7 @@ use freetype::face::{Face, LoadFlag};
 use freetype::{GlyphSlot, Bitmap};
 use image::{ImageBuffer, Rgb, GenericImage};
 
-
+/// A rectangle constrained by corner position and sizes
 #[derive(Default, Debug, Copy, Clone)]
 pub struct Rectangle {
     pub top: u32,
@@ -17,47 +17,23 @@ pub struct Rectangle {
 }
 
 impl Rectangle {
+    /// Creates a new rectangle at (top, left) with (width, height) dimensions.
     pub fn new(top: u32, left: u32, width: u32, height: u32) -> Self {
 	Self { top, left, width, height }
     }
 
+    /// Returns true if the current rectangle fits in the `other` rectangle.
     pub fn fit_in(&self, other: &Rectangle) -> bool {
 	other.width >= self.width && other.height >= self.height
     }
 
+    /// Returns true if the two rectangles hase the same sizes.
     pub fn same_size(&self, other: &Rectangle) -> bool {
 	return self.width == other.width && self.height == other.height
     }
-
-    pub fn merge_max(&self, other: &Rectangle) -> Rectangle {
-	let new_left = if other.left < self.left {
-	    other.left
-	} else {
-	    self.left
-	};
-
-	let other_right = other.left + other.width;
-	let self_right = self.left + self.width;
-	let new_right = std::cmp::max(other_right, self_right);
-
-	let new_width = new_right - new_left;
-
-	let new_top = if other.top < self.top {
-	    other.top
-	} else {
-	    self.top
-	};
-
-	let other_bottom = other.top + other.height;
-	let self_bottom = self.top + self.height;
-	let new_bottom = std::cmp::max(other_bottom, self_bottom);
-
-	let new_height = new_bottom - new_top;
-
-	Rectangle::new(new_left, new_top, new_width, new_height)
-    }
 }
 
+/// A binary tree node containing rectangles.
 #[derive(Debug)]
 pub struct Node {
     pub rectangle: Rectangle,
@@ -66,6 +42,7 @@ pub struct Node {
 }
 
 impl Node {
+    /// Creates a node containing the given node.
     pub fn new(rectangle: Rectangle) -> Self {
 	Self {
 	    rectangle,
@@ -74,10 +51,12 @@ impl Node {
 	}
     }
 
+    /// Returns true if the given node is a leaf,
     pub fn is_leaf(&self) -> bool {
 	self.children[0].is_none() && self.children[1].is_none()
     }
 
+    /// Returns a result indicating if the given rectangle were sucessfully inserted in the tree.
     pub fn insert(&mut self, rectangle: &Rectangle) -> Result<Rectangle, ()> {
 	// If we are in a leaf
 	if self.is_leaf() {
@@ -158,7 +137,7 @@ impl From<&GlyphSlot> for GlyphMetrics {
     }
 }
 
-
+/// A struct representing a glyph in the font atlas.
 #[derive(Debug)]
 pub struct Glyph {
     pub metrics: GlyphMetrics,
@@ -166,6 +145,7 @@ pub struct Glyph {
     pub atlas_index: usize
 }
 
+/// A struct representing various metrics about a glyph.
 #[derive(Debug)]
 pub struct GlyphMetrics {
     pub width: u32,
@@ -176,6 +156,7 @@ pub struct GlyphMetrics {
 
 }
 
+/// An atlas containing glyphs of a given font.
 pub struct FontAtlas {
     pub map: HashMap<char, Glyph>,
     pub buffers: Vec<ImageBuffer<Rgb<u8>, Vec<u8>>>,
@@ -184,6 +165,7 @@ pub struct FontAtlas {
 }
 
 impl FontAtlas {
+    /// Create a font atlas of given `atlas_size`.
     pub fn new(atlas_size: (u32, u32)) -> Self {
 	Self {
 	    map: HashMap::new(),
@@ -212,6 +194,7 @@ impl FontAtlas {
 	vec_buffer
     }
 
+    /// Creates a font atlas from the given string and the given font face.
     pub fn from_str(glyphs: &str, font_face: &Face, atlas_size: (u32, u32)) -> Result<FontAtlas, FontAtlasError> {
 	let mut atlas = FontAtlas::new(atlas_size);
 
@@ -253,29 +236,27 @@ impl FontAtlas {
 		});
 	    })?;
 
-	    {
-		let inserted_without_padding = Rectangle::new(
-		    inserted.top + padding_top,
-		    inserted.left + padding_left,
-		    inserted.width - padding_h,
-		    inserted.height - padding_v
-		);
+	    let inserted_without_padding = Rectangle::new(
+		inserted.top + padding_top,
+		inserted.left + padding_left,
+		inserted.width - padding_h,
+		inserted.height - padding_v
+	    );
 
-		let g = Glyph {
-		    atlas_position: inserted_without_padding,
-		    atlas_index: current_atlas_index,
-		    metrics: glyph.into()
-		};
-		atlas.map.insert(c, g);
+	    let g = Glyph {
+		atlas_position: inserted_without_padding,
+		atlas_index: current_atlas_index,
+		metrics: glyph.into()
+	    };
+	    atlas.map.insert(c, g);
 
-		let mut atlas_view = atlas.buffers[current_atlas_index].sub_image(
-		    inserted_without_padding.left,
-		    inserted_without_padding.top,
-		    inserted_without_padding.width,
-		    inserted_without_padding.height
-		);
-		atlas_view.copy_from(&bitmap, 0, 0);
-	    }
+	    let mut atlas_view = atlas.buffers[current_atlas_index].sub_image(
+		inserted_without_padding.left,
+		inserted_without_padding.top,
+		inserted_without_padding.width,
+		inserted_without_padding.height
+	    );
+	    atlas_view.copy_from(&bitmap, 0, 0);
 	}
 
 	Ok(atlas)
@@ -324,8 +305,8 @@ pub fn generate_text(s: &str, font_atlas: &FontAtlas, save_path: &Path) {
 	advance += glyph.metrics.advance;
     }
 
-    let buffer_width = right + left;
-    let buffer_height = top + bottom;
+    let buffer_width = right + left + 1;
+    let buffer_height = top + bottom + 1;
 
     let mut buffer: ImageBuffer<Rgb<u8>, _> = ImageBuffer::new(buffer_width as u32, buffer_height as u32);
 

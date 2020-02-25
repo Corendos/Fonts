@@ -1,9 +1,10 @@
 use std::ffi::OsStr;
 use std::io::{Write, Read};
+use std::path::Path;
 
 use freetype::{Library, LcdFilter};
 
-use font::{FontAtlas, Glyph};
+use font::{FontAtlas, Glyph, generate_text};
 
 const FONT_DIRECTORY: &str = "/home/corendos/dev/rust/font/resources/fonts";
 const FONT_SIZE: isize = 30 * 64;
@@ -55,10 +56,9 @@ fn main() {
 
     let font_atlas = FontAtlas::from_str(GLYPHS, &font_face, (256, 256)).unwrap();
 
-    for (i, buffer) in font_atlas.buffers.iter().enumerate() {
-	buffer.save(format!("glyphs_{}.png", i)).unwrap();
-    }
+    let text = "test the text generator";
 
+    generate_text(&text, &font_atlas, Path::new(&"text.png"));
 /*
     let c = font_atlas.map.get(&'a').unwrap();
      */
