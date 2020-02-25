@@ -1,10 +1,9 @@
 use std::ffi::OsStr;
 use std::io::{Write, Read};
-use std::path::Path;
 
 use freetype::{Library, LcdFilter};
 
-use font::{FontAtlas, Glyph, generate_text};
+use font::{atlas::{FontAtlas}, Glyph};
 
 const FONT_DIRECTORY: &str = "/home/corendos/dev/rust/font/resources/fonts";
 const FONT_SIZE: isize = 30 * 64;
@@ -25,7 +24,7 @@ fn get_fonts() -> Vec<String> {
     font_paths
 }
 
-fn test_serialize_deserialize(c: &Glyph) {
+fn _test_serialize_deserialize(c: &Glyph) {
     unsafe {
 	let buffer = std::slice::from_raw_parts(c as *const Glyph as *const u8, std::mem::size_of_val(c));
 
@@ -56,10 +55,10 @@ fn main() {
 
     let font_atlas = FontAtlas::from_str(GLYPHS, &font_face, (256, 256)).unwrap();
 
-    let text = "test the text generator";
+    let _text = "test the text generator";
 
     for (i, buffer) in font_atlas.buffers.iter().enumerate() {
-	buffer.save(format!("glyphs_{}.png", i)).unwrap();
+	buffer.save(format!("output/glyphs_{}.png", i)).unwrap();
     }
     //generate_text(&text, &font_atlas, Path::new(&"text.png"));
 /*
