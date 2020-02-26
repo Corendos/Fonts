@@ -138,8 +138,76 @@ impl Debug for FontAtlasError {
     }
 }
 
+pub struct TextVertex {
+    pub position: [f32; 2],
+    pub uv: [f32; 2],
+}
 
-pub fn generate_text(s: &str, font_atlas: &FontAtlas, save_path: &Path) {
+
+pub fn generate_buffers_from_text(text: &str, font_atlas: &FontAtlas, x: i32, y: i32) -> Vec<TextVertex> {
+    let mut advance = 0i32;
+
+    let mut vertex_buffer = Vec::<TextVertex>::with_capacity(text.len() * 4 * 6);
+
+    for c in text.chars() {
+	let glyph = font_atlas.map.get(&c).unwrap_or_else(|| {
+	    font_atlas.map.get(&' ').unwrap()
+	});
+
+	let left = (x + advance + glyph.metrics.bearing_x) as f32;
+	let right = (x + advance + glyph.metrics.bearing_x + glyph.metrics.width as i32) as f32;
+	let top = (y + glyph.metrics.bearing_y) as f32;
+	let bottom = (y + glyph.metrics.bearing_y - glyph.metrics.height as i32) as f32;
+
+	let uv_left = glyph.atlas_position.left as f32;
+	let uv_right = (glyph.atlas_position.left + glyph.atlas_position.width) as f32;
+	let uv_top = glyph.atlas_position.top as f32;
+	let uv_bottom = (glyph.atlas_position.top + glyph.atlas_position.height) as f32;
+
+	let v1 = TextVertex {
+	    position: [left, bottom],
+	    uv: [uv_left, uv_bottom]
+	};
+
+	let v2 = TextVertex {
+	    position: [right, bottom],
+	    uv: [uv_right, uv_bottom]
+	};
+
+	let v3 = TextVertex {
+	    position: [left, top],
+	    uv: [uv_left, uv_top]
+	};
+
+	let v4 = TextVertex {
+	    position: [right, bottom],
+	    uv: [uv_right, uv_bottom]
+	};
+
+	let v5 = TextVertex {
+	    position: [right, top],
+	    uv: [uv_right, uv_top]
+	};
+
+	let v6 = TextVertex {
+	    position: [left, top],
+	    uv: [uv_left, uv_top]
+	};
+
+	vertex_buffer.push(v1);
+	vertex_buffer.push(v2);
+	vertex_buffer.push(v3);
+	vertex_buffer.push(v4);
+	vertex_buffer.push(v5);
+	vertex_buffer.push(v6);
+
+	advance += glyph.metrics.advance;
+    }
+
+    vertex_buffer
+}
+
+pub fn generate_text_img(s: &str, font_atlas: &FontAtlas, save_path: &Path) {
     let mut advance = 0i32;
     let mut top = 0i32;
     let mut left = 0i32;
