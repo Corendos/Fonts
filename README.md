@@ -10,3 +10,7 @@ With Subpixel Rendering:
 
 Without Subpixel Rendering:
 ![gray_sample_1](samples/gray_1.png)
+
+## Benchmark
+
+You can run the benchmark to see how long the atlas generation takes. For the two versions it takes around 3ms to generate the full atlas, which is kind of slow for the moment.
