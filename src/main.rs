@@ -1,13 +1,11 @@
 use std::ffi::OsStr;
-use std::io::{Write, Read};
 
-use freetype::{Library, LcdFilter};
+use freetype::{face::LoadFlag};
 
-use font::{atlas::{FontAtlas}, Glyph};
+use font::{atlas::{AtlasGenerator, AtlasGeneratorOption, Padding, AtlasLoadMode}};
 
 const FONT_DIRECTORY: &str = "/home/corendos/dev/rust/font/resources/fonts";
-const FONT_SIZE: isize = 30 * 64;
-const GLYPHS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\\|/?.>,<`!@#$%^&*()_-=+[]{};:'\" é";
+const FONT_SIZE: u32 = 30 * 64;
 
 fn get_fonts() -> Vec<String> {
 
@@ -24,44 +22,30 @@ fn get_fonts() -> Vec<String> {
     font_paths
 }
 
-fn _test_serialize_deserialize(c: &Glyph) {
-    unsafe {
-	let buffer = std::slice::from_raw_parts(c as *const Glyph as *const u8, std::mem::size_of_val(c));
-
-	let mut f = std::fs::File::create("test.data").unwrap();
-
-	f.write(buffer).unwrap();
-    }
-
-    let mut read_glyph: Glyph = unsafe { std::mem::zeroed() };
-    unsafe {
-	let mut buffer = std::slice::from_raw_parts_mut(&mut read_glyph as *mut Glyph as *mut u8, std::mem::size_of::<Glyph>());
-
-	let mut f = std::fs::File::open("test.data").unwrap();
-
-	f.read(&mut buffer).unwrap();
-    }
-}
-
 fn main() {
     let fonts = get_fonts();
-    let library = Library::init().expect("Failed to init freetype library");
 
-    library.set_lcd_filter(LcdFilter::LcdFilterDefault).unwrap();
+    let generator = AtlasGenerator::new(
+	&fonts[1],
+	AtlasGeneratorOption::new(256, 256, 72, Padding::new(1, 1, 1, 1)),
+	AtlasLoadMode::LCD
+    );
 
-    let font_face = library.new_face(&fonts[7], 0).expect("Failed to load font");
+    let font_atlas = generator.generate(FONT_SIZE).unwrap();
 
-    font_face.set_char_size(0, FONT_SIZE, 0, 72).unwrap();
 
-    let font_atlas = FontAtlas::from_str(GLYPHS, &font_face, (256, 256)).unwrap();
+    let start = std::time::Instant::now();
+    generator.load_glyph('é', LoadFlag::RENDER).unwrap();
+    let end = std::time::Instant::now();
 
-    let _text = "test the text generator";
+    println!("Took {} ns", (end - start).as_nanos());
+    font_atlas.buffer.save("output/glyphs.png").unwrap();
 
-    for (i, buffer) in font_atlas.buffers.iter().enumerate() {
-	buffer.save(format!("output/glyphs_{}.png", i)).unwrap();
-    }
-    //generate_text(&text, &font_atlas, Path::new(&"text.png"));
-/*
-    let c = font_atlas.map.get(&'a').unwrap();
+    /*
+    let text = "Hello dlrow !";
+
+    let buffer = generate_buffers_from_text(&text, &font_atlas, 0, 0);
+    generate_text_img(text, &font_atlas, "output/text.png");
+    println!("{:#?}", buffer);
      */
 }

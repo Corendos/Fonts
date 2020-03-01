@@ -1,6 +1,6 @@
 use std::boxed::Box;
-use std::fmt::{Debug};
-use freetype::{GlyphSlot};
+use std::fmt::{Debug, Display};
+use image::{ImageBuffer, Rgb};
 
 pub mod atlas;
 
@@ -54,12 +54,12 @@ impl Node {
     }
 
     /// Returns a result indicating if the given rectangle were sucessfully inserted in the tree.
-    pub fn insert(&mut self, rectangle: &Rectangle) -> Result<Rectangle, ()> {
+    pub fn insert(&mut self, rectangle: &Rectangle) -> Result<Rectangle, NodeInsertError> {
 	// If we are in a leaf
 	if self.is_leaf() {
 	    // If the node is already occupied, we can't insert the new rectangle
 	    if self.occupied {
-		return Err(());
+		return Err(NodeInsertError(rectangle.clone()));
 	    }
 
 	    // If the rectangle fit
@@ -109,7 +109,7 @@ impl Node {
 	    }
 
 	    // The rectangle does not fit
-	    return Err(());
+	    return Err(NodeInsertError(rectangle.clone()));
 	} else {    // We are not in a leaf
 	    // We try to insert it in the first children
 	    match self.children[0].as_mut().unwrap().insert(rectangle) {
@@ -122,15 +122,12 @@ impl Node {
     }
 }
 
-impl From<&GlyphSlot> for GlyphMetrics {
-    fn from(glyph_slot: &GlyphSlot) -> GlyphMetrics {
-	GlyphMetrics {
-	    width: glyph_slot.metrics().width as u32 / 64,
-	    height: glyph_slot.metrics().height as u32 / 64,
-	    bearing_x: glyph_slot.metrics().horiBearingX as i32 / 64,
-	    bearing_y: glyph_slot.metrics().horiBearingY as i32 / 64,
-	    advance: glyph_slot.metrics().horiAdvance as i32 / 64
-	}
+#[derive(Debug)]
+pub struct NodeInsertError(Rectangle);
+
+impl Display for NodeInsertError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+	write!(f, "Can't insert rectangle of size ({},{})", self.0.width, self.0.height)
     }
 }
 
@@ -138,8 +135,17 @@ impl From<&GlyphSlot> for GlyphMetrics {
 #[derive(Debug)]
 pub struct Glyph {
     pub metrics: GlyphMetrics,
-    pub atlas_position: Rectangle,
-    pub atlas_index: usize
+    pub bitmap: ImageBuffer<Rgb<u8>, Vec<u8>>
+}
+
+impl Glyph {
+    /// Creates a glyph from its metrics and its associated bitmap.
+    pub fn new(metrics: GlyphMetrics, bitmap: ImageBuffer<Rgb<u8>, Vec<u8>>) -> Self {
+	Self {
+	    metrics,
+	    bitmap,
+	}
+    }
 }
 
 /// A struct representing various metrics about a glyph.
@@ -151,4 +157,17 @@ pub struct GlyphMetrics {
     pub bearing_y: i32,
     pub advance: i32,
 
+}
+
+impl GlyphMetrics {
+    /// Creates a GlyphMetrics from the given metrics values.
+    pub fn new(width: u32, height: u32, bearing_x: i32, bearing_y: i32, advance: i32) -> Self {
+	Self {
+	    width,
+	    height,
+	    bearing_x,
+	    bearing_y,
+	    advance
+	}
+    }
 }
