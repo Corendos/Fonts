@@ -5,10 +5,10 @@ A font atlas generator written in Rust using the Rust bindings for [FreeType](ht
 ## Samples
 Some atlas samples.
 
-With Subpixel Rendering:
+With Subpixel Rendering:  
 ![subpixel_sample_1](samples/subpixel_1.png)
 
-Without Subpixel Rendering:
+Without Subpixel Rendering:  
 ![gray_sample_1](samples/gray_1.png)
 
 ## Benchmark
