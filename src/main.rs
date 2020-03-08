@@ -2,10 +2,10 @@ use std::ffi::OsStr;
 
 use freetype::{face::LoadFlag};
 
-use font::{atlas::{AtlasGenerator, AtlasGeneratorOption, Padding, AtlasLoadMode}};
+use font::{atlas::{AtlasGenerator, AtlasGeneratorOption, Padding, AtlasLoadMode}, FontLoader};
 
 const FONT_DIRECTORY: &str = "/home/corendos/dev/rust/font/resources/fonts";
-const FONT_SIZE: u32 = 30 * 64;
+const FONT_SIZE: u32 = 200 * 64;
 
 fn get_fonts() -> Vec<String> {
 
@@ -27,18 +27,20 @@ fn main() {
 
     let generator = AtlasGenerator::new(
 	&fonts[1],
-	AtlasGeneratorOption::new(256, 256, 72, Padding::new(1, 1, 1, 1)),
+	AtlasGeneratorOption::new(2048, 2048, 72, Padding::new(1, 1, 1, 1)),
 	AtlasLoadMode::LCD
-    );
+    ).unwrap();
 
     let font_atlas = generator.generate(FONT_SIZE).unwrap();
 
+    let font_loader = FontLoader::new(&fonts[1]).unwrap();
 
     let start = std::time::Instant::now();
-    generator.load_glyph('é', LoadFlag::RENDER).unwrap();
+    font_loader.load_glyph('W', 72, 300 * 64, LoadFlag::RENDER | LoadFlag::TARGET_LCD).unwrap();
     let end = std::time::Instant::now();
 
     println!("Took {} ns", (end - start).as_nanos());
+
     font_atlas.buffer.save("output/glyphs.png").unwrap();
 
     /*

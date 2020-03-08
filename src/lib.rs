@@ -1,6 +1,9 @@
 use std::boxed::Box;
 use std::fmt::{Debug, Display};
+use std::path::Path;
 use image::{ImageBuffer, Rgb};
+
+use freetype::{face::{Face, LoadFlag}, LcdFilter, Library, Bitmap};
 
 pub mod atlas;
 
@@ -168,6 +171,131 @@ impl GlyphMetrics {
 	    bearing_x,
 	    bearing_y,
 	    advance
+	}
+    }
+}
+
+
+pub struct FontLoader {
+    ft_font_face: Face,
+}
+
+impl FontLoader {
+    pub fn new<P: AsRef<Path>>(font_filepath: P) -> Result<FontLoader, FontLoaderError> {
+	let library = if let Ok(library) = Library::init() {
+	    library
+	} else {
+	    return Err(FontLoaderError::LibraryLoadError);
+	};
+
+	if let Err(_) = library.set_lcd_filter(LcdFilter::LcdFilterDefault) {
+	    return Err(FontLoaderError::LcdFilterError);
+	}
+
+	let face = if let Ok(face) = library.new_face(font_filepath.as_ref(), 0) {
+	    face
+	} else {
+	    let font_name = font_filepath.as_ref().file_name().unwrap().to_str().unwrap();
+	    return Err(FontLoaderError::FontLoadError(String::from(font_name)));
+	};
+
+	Ok(FontLoader {
+	    ft_font_face: face
+	})
+    }
+
+    /// Loads a glyph from the associated font file.
+    pub fn load_glyph(&self, c: char, dpi: u32, size: u32, load_flags: LoadFlag) -> Result<Glyph, FontLoaderError> {
+	self.ft_font_face.set_char_size(0, size as isize, 0, dpi).unwrap();
+
+	if let Err(e) = self.ft_font_face.load_char(c as usize, load_flags) {
+	    return Err(FontLoaderError::GlyphLoadError(c));
+	}
+
+	let ft_glyph = self.ft_font_face.glyph();
+	let raw_bitmap = ft_glyph.bitmap();
+
+	let bitmap = self.convert_bitmap(&raw_bitmap, load_flags);
+
+	let metrics = GlyphMetrics::new(
+	    ft_glyph.metrics().width as u32 / 64,
+	    ft_glyph.metrics().height as u32 / 64,
+	    ft_glyph.metrics().horiBearingX as i32 / 64,
+	    ft_glyph.metrics().horiBearingY as i32 / 64,
+	    ft_glyph.metrics().horiAdvance as i32 / 64
+	);
+
+
+	Ok(Glyph::new(metrics, bitmap))
+    }
+
+    fn convert_bitmap(&self, bitmap: &Bitmap, load_flags: LoadFlag) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
+	let (width, height, pitch) = match load_flags.contains(LoadFlag::TARGET_LCD) {
+	    true => (bitmap.width() as u32 / 3, bitmap.rows() as u32, bitmap.pitch()),
+	    false => (bitmap.width() as u32, bitmap.rows() as u32, bitmap.pitch()),
+	};
+
+	let pixel_count = (width * height) as usize;
+
+	let mut vec_buffer = Vec::<u8>::with_capacity(pixel_count * 3);
+	vec_buffer.resize(pixel_count * 3, 0);
+
+	for y in 0..height as usize {
+	    for x in 0..width as usize {
+		match load_flags.contains(LoadFlag::TARGET_LCD) {
+		    false => {
+			let src = y * pitch as usize + x;
+			let dst = y * (width * 3) as usize + x * 3;
+			let gray = bitmap.buffer()[src];
+			vec_buffer[dst] = gray;
+			vec_buffer[dst + 1] = gray;
+			vec_buffer[dst + 2] = gray;
+		    },
+		    true => {
+			let src = y * pitch as usize + x * 3;
+			let dst = y * (width * 3) as usize + x * 3;
+
+			let r = bitmap.buffer()[src];
+			let g = bitmap.buffer()[src + 1];
+			let b = bitmap.buffer()[src + 2];
+			vec_buffer[dst] = r;
+			vec_buffer[dst + 1] = g;
+			vec_buffer[dst + 2] = b;
+		    },
+		}
+
+	    }
+	}
+
+	ImageBuffer::from_vec(width, height, vec_buffer).unwrap()
+    }
+}
+
+pub enum FontLoaderError {
+    LibraryLoadError,
+    LcdFilterError,
+    FontLoadError(String),
+    GlyphLoadError(char)
+}
+
+impl Display for FontLoaderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+	match self {
+	    FontLoaderError::LibraryLoadError => write!(f, "Failed to load freetype library !"),
+	    FontLoaderError::LcdFilterError => write!(f, "Failed to set LCD filter"),
+	    FontLoaderError::FontLoadError(s) => write!(f, "Failed to load font {}", s),
+	    FontLoaderError::GlyphLoadError(c) => write!(f, "Can't load character {}", c),
+	}
+    }
+}
+
+impl Debug for FontLoaderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+	match self {
+	    FontLoaderError::LibraryLoadError => write!(f, "Failed to load freetype library !"),
+	    FontLoaderError::LcdFilterError => write!(f, "Failed to set LCD filter"),
+	    FontLoaderError::FontLoadError(s) => write!(f, "Failed to load font {}", s),
+	    FontLoaderError::GlyphLoadError(c) => write!(f, "Can't load character {}", c),
 	}
     }
 }

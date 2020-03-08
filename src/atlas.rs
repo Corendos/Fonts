@@ -2,11 +2,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::fmt::{Debug, Display};
 
-use freetype::face::{Face, LoadFlag};
-use freetype::{Bitmap, Library, LcdFilter};
+use freetype::face::LoadFlag;
 use image::{ImageBuffer, Rgb, GenericImage};
 
-use super::{Glyph, GlyphMetrics, Node, Rectangle, NodeInsertError};
+use super::{GlyphMetrics, Node, Rectangle, NodeInsertError, FontLoader, FontLoaderError};
 
 const GLYPHS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\\|/?.>,<`!@#$%^&*()_-=+[]{};:'\" ";
 
@@ -203,31 +202,25 @@ impl AtlasGeneratorOption {
 
 /// A struct representing a FontAtlas generator
 pub struct AtlasGenerator {
-    ft_font_face: Face,
+    loader: FontLoader,
     load_mode: AtlasLoadMode,
     options: AtlasGeneratorOption
 }
 
 impl AtlasGenerator {
     /// Creates a generator from the given font filepath, options and load mode.
-    pub fn new<P>(font_filepath: P, options: AtlasGeneratorOption, load_mode: AtlasLoadMode) -> AtlasGenerator where P: AsRef<Path> {
-	let library = Library::init().expect("Failed to init freetype library");
+    pub fn new<P>(font_filepath: P, options: AtlasGeneratorOption, load_mode: AtlasLoadMode) -> Result<AtlasGenerator, AtlasGeneratorError> where P: AsRef<Path> {
+	let font_loader = FontLoader::new(font_filepath)?;
 
-	library.set_lcd_filter(LcdFilter::LcdFilterDefault).expect("Failed to set LCD Filter");
-
-	let face = library.new_face(font_filepath.as_ref(), 0).expect("Failed to load font");
-
-	AtlasGenerator {
-	    ft_font_face: face,
+	Ok(AtlasGenerator {
+	    loader: font_loader,
 	    load_mode,
 	    options,
-	}
+	})
     }
 
     /// Generate an atlas with the associated font of size `size`.
-    pub fn generate(&self, size: u32) -> Result<FontAtlas, AtlasGeneratorError>{
-	self.ft_font_face.set_char_size(0, size as isize, 0, self.options.dpi).unwrap();
-
+    pub fn generate(&self, size: u32) -> Result<FontAtlas, AtlasGeneratorError> {
 	let mut atlas = FontAtlas::new(self.options.size);
 
 	let mut node = Node::new(Rectangle::new(0, 0, atlas.width, atlas.height));
@@ -238,7 +231,7 @@ impl AtlasGenerator {
 		AtlasLoadMode::LCD => LoadFlag::RENDER | LoadFlag::TARGET_LCD
 	    };
 
-	    let glyph = self.load_glyph(c, load_flags)?;
+	    let glyph = self.loader.load_glyph(c, self.options.dpi, size, load_flags)?;
 
 	    let bitmap_rectangle = Rectangle::new(
 		0,
@@ -271,75 +264,11 @@ impl AtlasGenerator {
 
 	Ok(atlas)
     }
-
-    fn convert_bitmap(&self, bitmap: &Bitmap) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
-	let (width, height, pitch) = match self.load_mode {
-	    AtlasLoadMode::Gray => (bitmap.width() as u32, bitmap.rows() as u32, bitmap.pitch()),
-	    AtlasLoadMode::LCD => (bitmap.width() as u32 / 3, bitmap.rows() as u32, bitmap.pitch()),
-	};
-
-	let pixel_count = (width * height) as usize;
-
-	let mut vec_buffer = Vec::<u8>::with_capacity(pixel_count * 3);
-	vec_buffer.resize(pixel_count * 3, 0);
-
-	for y in 0..height as usize {
-	    for x in 0..width as usize {
-		match self.load_mode {
-		    AtlasLoadMode::Gray => {
-			let src = y * pitch as usize + x;
-			let dst = y * (width * 3) as usize + x * 3;
-			let gray = bitmap.buffer()[src];
-			vec_buffer[dst] = gray;
-			vec_buffer[dst + 1] = gray;
-			vec_buffer[dst + 2] = gray;
-		    },
-		    AtlasLoadMode::LCD => {
-			let src = y * pitch as usize + x * 3;
-			let dst = y * (width * 3) as usize + x * 3;
-
-			let r = bitmap.buffer()[src];
-			let g = bitmap.buffer()[src + 1];
-			let b = bitmap.buffer()[src + 2];
-			vec_buffer[dst] = r;
-			vec_buffer[dst + 1] = g;
-			vec_buffer[dst + 2] = b;
-		    },
-		}
-
-	    }
-	}
-
-	ImageBuffer::from_vec(width, height, vec_buffer).unwrap()
-    }
-
-    /// Loads a glyph from the associated font file.
-    pub fn load_glyph(&self, c: char, load_flags: LoadFlag) -> Result<Glyph, AtlasGeneratorError> {
-	if let Err(_) = self.ft_font_face.load_char(c as usize, load_flags) {
-	    return Err(AtlasGeneratorError::LoadError(c));
-	}
-
-	let ft_glyph = self.ft_font_face.glyph();
-	let raw_bitmap = ft_glyph.bitmap();
-
-	let bitmap = self.convert_bitmap(&raw_bitmap);
-
-
-	let metrics = GlyphMetrics::new(
-	    ft_glyph.metrics().width as u32 / 64,
-	    ft_glyph.metrics().height as u32 / 64,
-	    ft_glyph.metrics().horiBearingX as i32 / 64,
-	    ft_glyph.metrics().horiBearingY as i32 / 64,
-	    ft_glyph.metrics().horiAdvance as i32 / 64
-	);
-
-
-	Ok(Glyph::new(metrics, bitmap))
-    }
 }
 
 /// An enum representing all the error that could happen using the generator.
 pub enum AtlasGeneratorError{
+    CreateError(FontLoaderError),
     InsertError(NodeInsertError),
     LoadError(char)
 }
@@ -350,9 +279,16 @@ impl From<NodeInsertError> for AtlasGeneratorError {
     }
 }
 
+impl From<FontLoaderError> for AtlasGeneratorError {
+    fn from(e: FontLoaderError) -> Self {
+	AtlasGeneratorError::CreateError(e)
+    }
+}
+
 impl Display for AtlasGeneratorError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 	match self {
+	    AtlasGeneratorError::CreateError(font_loader_error) => write!(f, "{}", font_loader_error),
 	    AtlasGeneratorError::InsertError(node_error) => write!(f, "{}", node_error),
 	    AtlasGeneratorError::LoadError(c) => write!(f, "Can't load character {}", c),
 	}
@@ -362,6 +298,7 @@ impl Display for AtlasGeneratorError {
 impl Debug for AtlasGeneratorError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 	match self {
+	    AtlasGeneratorError::CreateError(font_loader_error) => write!(f, "{}", font_loader_error),
 	    AtlasGeneratorError::InsertError(node_error) => write!(f, "{}", node_error),
 	    AtlasGeneratorError::LoadError(c) => write!(f, "Can't load character {}", c),
 	}

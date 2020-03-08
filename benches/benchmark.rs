@@ -12,7 +12,7 @@ fn benchmark_1024_subpixel(c: &mut Criterion) {
 	&"/home/corendos/dev/rust/font/resources/fonts/EBGaramond-Regular.ttf",
 	AtlasGeneratorOption::new(1024, 1024, 72, Padding::new(1, 1, 1, 1)),
 	AtlasLoadMode::LCD
-    );
+    ).unwrap();
 
     c.bench_function("1024_1024_subpixel", |b| b.iter(|| {
 	let font_atlas = generator.generate(FONT_SIZE).unwrap();
@@ -26,7 +26,7 @@ fn benchmark_1024_gray(c: &mut Criterion) {
 	&"/home/corendos/dev/rust/font/resources/fonts/EBGaramond-Regular.ttf",
 	AtlasGeneratorOption::new(1024, 1024, 72, Padding::new(1, 1, 1, 1)),
 	AtlasLoadMode::Gray
-    );
+    ).unwrap();
 
     c.bench_function("1024_1024_gray", |b| b.iter(|| {
 	let font_atlas = generator.generate(FONT_SIZE).unwrap();
